@@ -173,6 +173,16 @@ table.year th:first-child,table.year td:first-child{text-align:left;position:sti
 table.year thead th{color:var(--muted);font-weight:700}
 table.year td.over{color:var(--plum);font-weight:700;background:var(--plum-soft)}
 table.year tfoot td{border-top:2px solid var(--ink);font-weight:700}
+.scroll-x.bgrid{margin:0;padding:0}
+.bgrid td:first-child,.bgrid th:first-child{min-width:128px;max-width:170px;white-space:normal}
+.bgrid td input{width:86px;min-height:34px;padding:4px 6px;font-size:.85rem;text-align:right;border-radius:8px}
+.bgrid input.chg{border-color:var(--coral);box-shadow:inset 0 0 0 1px var(--coral)}
+.bgrid th.cur{color:var(--ink);border-bottom:3px solid var(--coral)}
+.bgrid td.cur{background:var(--pine-soft)}
+.sv-f{font-weight:700}
+.sv-a{font-size:.78rem;color:var(--muted);font-weight:400}
+.bgrid td.tot{font-weight:700}
+.bgrid tr.tot-row td{border-top:2px solid var(--ink);font-weight:700}
 .chart{margin:4px 0 24px}
 .quarters{display:flex;gap:8px;margin:12px 0}
 .insight{white-space:pre-wrap;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px;max-width:68ch}
@@ -233,6 +243,7 @@ dialog::backdrop{background:rgba(10,20,16,.45)}
     <button role="tab" data-tab="expenses">Expenses</button>
     <button role="tab" data-tab="budget">Budget</button>
     <button role="tab" data-tab="insights">Insights</button>
+    <button role="tab" data-tab="savings">Savings</button>
     <button role="tab" data-tab="year">Year</button>
   </nav>
   <main id="main"><p class="muted"><span class="spinner"></span>Loading your budget</p></main>
@@ -287,11 +298,13 @@ const normKey = s => String(s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim
 const CAT_LABELS = { '10%': 'God’s Shares' };
 const catLabel = c => CAT_LABELS[c] || c;
 /* Merged categories: stored data is never rewritten. On load, each old category is counted under its new home, and budget amounts are added together. */
-const CAT_MERGE = { 'council tax': 'Bills', 'clothes - maria': 'Pocket money – Maria', 'clothes - jack': 'Pocket money – Jack' };
+const CAT_MERGE = { 'council tax': 'Bills', 'clothes - maria': 'Pocket money – Maria', 'clothes - jack': 'Pocket money – Jack', 'savings - maria': 'House savings', 'savings - jack': 'House savings' };
+/* The app started in October 2026. Earlier months have no budget: they count as zero (a month can still be given its own figures). */
+const APP_START = '2026-10';
 const mapCat = c => CAT_MERGE[normName(c)] || c;
 function mapAmounts(a) { const out = {}; Object.entries(a || {}).forEach(([k, v]) => { const t = mapCat(k); out[t] = r2((out[t] || 0) + Number(v || 0)); }); return out; }
 /* Categories not offered in the pick-a-category lists when adding, scanning or importing (they still exist in Budget, Overview and Expenses). */
-const PICK_HIDDEN = ['Rent', 'Savings – Maria', 'Savings – Jack', 'Investing – Maria', 'Investing – Jack', 'Travel savings', 'Loan', 'Pocket money – Maria', 'Pocket money – Jack', '10%', 'Credit Card settlement'].map(c => c.toLowerCase().replace(/[‐-―−]/g, '-'));
+const PICK_HIDDEN = ['Rent', 'House savings', 'Investing – Maria', 'Investing – Jack', 'Travel savings', 'Loan', 'Pocket money – Maria', 'Pocket money – Jack', '10%', 'Credit Card settlement'].map(c => c.toLowerCase().replace(/[‐-―−]/g, '-'));
 const hiddenFromPick = c => PICK_HIDDEN.includes(normName(c));
 function listJoin(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
 function initials(n) { return String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''); }
@@ -313,7 +326,7 @@ let unsubMonth = null;
 /* ---------- data ---------- */
 /* A month's budget = the default budget, plus that month's own changes and extra categories. */
 function budgetFor(ym) {
-  const d = S.defaultBudget || {}, m = S.budgets[ym] || {};
+  const d = (ym < APP_START ? {} : S.defaultBudget) || {}, m = S.budgets[ym] || {};
   const extra = [...new Set((m.extraCats || []).map(mapCat))].filter(c => !S.categories.includes(c));
   return {
     income: m.income != null ? Number(m.income) || 0 : Number(d.income) || 0,
@@ -323,13 +336,11 @@ function budgetFor(ym) {
     extra, custom: !!S.budgets[ym],
   };
 }
-const savCats = () => (S.settings.autoSavings || []).filter(c => S.categories.includes(c));
-/* One savings category's share of a month's savings: an equal split, except in months listed in POTS_SAVINGS_ALL_TO_JACK. */
+const savCats = () => [...new Set((S.settings.autoSavings || []).map(mapCat))].filter(c => S.categories.includes(c));
+/* One savings category's share of a month's savings (with a single "House savings" category, that is all of it). */
 function savShare(ym, c, total) {
   const sc = savCats();
-  if (!sc.length) return 0;
-  if (POTS_SAVINGS_ALL_TO_JACK.includes(ym)) return normName(c) === normName('Savings – Jack') ? total : 0;
-  return total / sc.length;
+  return sc.length ? total / sc.length : 0;
 }
 const expCats = ym => { const sc = savCats(); const base = S.categories.filter(c => !sc.includes(c)); return ym ? [...base, ...budgetFor(ym).extra] : base; };
 function plan(ym) {
@@ -382,7 +393,7 @@ function setMonth(ym) {
 }
 function setTab(t) {
   if (S.tab === 'budget' && t !== 'budget' && S.budgetDirty) toast('Your budget changes were not saved. Go back to Budget and press Save.');
-  S.tab = t; store('tab', t); S.budgetDirty = false; S.budgetDraft = null;
+  S.tab = t; store('tab', t); S.budgetDirty = false; S.budgetDraft = null; S.yearBudget = null;
   render();
   if (t === 'year') ensureYear();
 }
@@ -404,6 +415,7 @@ function render(force) {
   else if (S.tab === 'budget') content = viewBudget();
   else if (S.tab === 'year') content = viewYear();
   else if (S.tab === 'insights') content = viewInsights();
+  else if (S.tab === 'savings') content = viewSavings();
   else content = viewOverview();
   main.replaceChildren(content);
   fillNames();
@@ -523,7 +535,7 @@ function savingsBlock(p, spent) {
   const mLong = monthName(S.ym, { month: 'long' });
   const sec = h('section', {}, h('h4', { class: 'sec' }, `Savings for ${mLong}`));
   if (!p.income) {
-    sec.append(h('p', { class: 'muted', style: 'max-width:60ch' }, `Add your monthly income in Budget. Whatever is left after spending is split equally between ${listJoin(sc)}.`),
+    sec.append(h('p', { class: 'muted', style: 'max-width:60ch' }, `Add your monthly income in Budget. Whatever is left after spending ${sc.length > 1 ? 'is split equally between' : 'goes to'} ${listJoin(sc.map(catLabel))}.`),
       S.canWrite ? h('button', { class: 'btn', onclick: () => { S.budgetMode = 'default'; setTab('budget'); } }, 'Add income') : null);
     return sec;
   }
@@ -607,7 +619,7 @@ async function setPaid(cat, value) {
     if (adj === 0) { if (quick) await ref.delete(); }
     else await ref.set({ date, amount: adj, category: cat, note: others ? 'Paid, updated in Paid table' : 'Paid, entered in Paid table', by: S.uid || null, createdAt: quick ? (quick.createdAt || new Date().toISOString()) : new Date().toISOString(), source: 'quick' });
     if (S.year.months) S.year.y = null;
-    S.pots = null;
+    S.pots = null; S.sav = null;
   } catch (e) { writeErr(e); render(true); }
 }
 
@@ -652,20 +664,24 @@ function viewBudget() {
   const wrap = h('div', {});
   const mLong = monthName(S.ym, { month: 'long' });
   const hasDefault = !!(S.defaultBudget && (S.defaultBudget.income || Object.keys(S.defaultBudget.amounts || {}).length));
-  if (!S.budgetMode) S.budgetMode = hasDefault ? 'month' : 'default';
+  if (!S.budgetMode) S.budgetMode = hasDefault ? 'year' : 'default';
   const mode = S.budgetMode;
+  const pick = m => () => { S.budgetMode = m; S.budgetDraft = null; S.yearBudget = null; S.budgetDirty = false; render(); };
   wrap.append(h('div', { class: 'chips', role: 'group', 'aria-label': 'Which budget to edit' },
-    h('button', { class: 'chip', 'aria-pressed': String(mode === 'default'), onclick: () => { S.budgetMode = 'default'; S.budgetDraft = null; S.budgetDirty = false; render(); } }, 'Default budget'),
-    h('button', { class: 'chip', 'aria-pressed': String(mode === 'month'), onclick: () => { S.budgetMode = 'month'; S.budgetDraft = null; S.budgetDirty = false; render(); } }, `${mLong} only`)));
+    h('button', { class: 'chip', 'aria-pressed': String(mode === 'year'), onclick: pick('year') }, '12 months'),
+    h('button', { class: 'chip', 'aria-pressed': String(mode === 'default'), onclick: pick('default') }, 'Default budget'),
+    h('button', { class: 'chip', 'aria-pressed': String(mode === 'month'), onclick: pick('month') }, `${mLong} only`)));
   if (!S.categories.length) {
     wrap.append(h('p', { class: 'empty' }, 'Add your first category below, then set how much you want to spend on each one every month.'));
     if (S.canWrite) wrap.append(manageCategories());
     return wrap;
   }
+  if (mode === 'year') { wrap.append(viewBudgetYear(hasDefault)); return wrap; }
   const b = budgetFor(S.ym), sc = savCats();
   const ec = mode === 'default' ? expCats() : expCats().concat(S.budgetDraft ? S.budgetDraft.extra : b.extra);
   if (!S.budgetDraft) {
-    const src = mode === 'default' ? { income: b.defIncome, amounts: b.defAmounts } : { income: b.income, amounts: b.amounts };
+    const realDefault = { income: Number((S.defaultBudget || {}).income) || 0, amounts: mapAmounts((S.defaultBudget || {}).amounts) };
+    const src = mode === 'default' ? realDefault : { income: b.income, amounts: b.amounts };
     S.budgetDraft = { income: src.income ? String(src.income) : '', amounts: {}, extra: mode === 'month' ? [...b.extra] : [] };
     expCats().concat(S.budgetDraft.extra).forEach(c => S.budgetDraft.amounts[c] = src.amounts[c] != null ? String(src.amounts[c]) : '');
   }
@@ -720,7 +736,7 @@ function viewBudget() {
   wrap.append(h('div', { class: 'btotal' }, h('span', {}, 'Total spending'), expTotEl));
   if (sc.length) {
     wrap.append(h('h4', { class: 'sec', style: 'margin-top:24px' }, 'Savings'),
-      h('p', { class: 'muted', style: 'margin:0 0 8px;font-size:.9rem' }, (POTS_SAVINGS_ALL_TO_JACK.includes(S.ym) ? 'Worked out for you: income minus total spending, all going to Savings – Jack this month.' : 'Worked out for you: income minus total spending, split equally.')));
+      h('p', { class: 'muted', style: 'margin:0 0 8px;font-size:.9rem' }, (sc.length > 1 ? 'Worked out for you: income minus total spending, split equally.' : 'Worked out for you: income minus total spending.')));
     sc.forEach(c => { perEls[c] = h('span', { class: 'num' }); wrap.append(h('div', { class: 'brow' }, h('span', { style: 'font-weight:700' }, catLabel(c)), h('span', { style: 'text-align:right;font-weight:700' }, perEls[c]))); });
     wrap.append(h('div', { class: 'btotal' }, h('span', {}, 'Total savings'), savTotEl));
   }
@@ -731,6 +747,148 @@ function viewBudget() {
     mode === 'month' && b.custom ? h('button', { class: 'btn', onclick: resetMonth }, `Reset ${mLong} to default`) : null));
   if (S.canWrite && mode === 'default') wrap.append(manageCategories());
   return wrap;
+}
+/* ---------- budget: all 12 months in one table ---------- */
+const fmt0 = n => Math.round(n).toLocaleString('en-GB');
+function viewBudgetYear(hasDefault) {
+  const wrap = h('div', {});
+  const ro = !S.canWrite, sc = savCats();
+  const y = S.gridYear || Number(S.ym.slice(0, 4)); S.gridYear = y;
+  const months = []; for (let m = 1; m <= 12; m++) months.push(`${y}-${pad(m)}`);
+  const cur = currentYm();
+  if (!S.yearBudget || S.yearBudget.y !== y) {
+    const Y = { y, months: {}, touched: new Set() };
+    months.forEach(ym => {
+      const b = budgetFor(ym), d = { income: b.income ? String(b.income) : '', amounts: {}, extra: [...b.extra], defA: b.defAmounts, defI: b.defIncome };
+      expCats().concat(b.extra).forEach(c => d.amounts[c] = b.amounts[c] != null ? String(b.amounts[c]) : '');
+      Y.months[ym] = d;
+    });
+    S.yearBudget = Y;
+  }
+  const Y = S.yearBudget;
+  const extras = []; months.forEach(ym => Y.months[ym].extra.forEach(c => { if (!extras.includes(c)) extras.push(c); }));
+  const rows = expCats().concat(extras);
+  const dirty = ym => { Y.touched.add(ym); S.budgetDirty = true; };
+  const yearNav = d => () => { if (S.budgetDirty) { toast('Save or discard your changes before changing year.'); return; } S.gridYear = y + d; S.yearBudget = null; render(); };
+  wrap.append(h('div', { class: 'month', style: 'margin:0 0 6px' },
+    h('h4', { class: 'sec', style: 'margin:0;flex:1' }, `${y} budget, month by month`),
+    h('button', { class: 'icon-btn', 'aria-label': 'Previous year', onclick: yearNav(-1) }, '‹'),
+    h('button', { class: 'icon-btn', 'aria-label': 'Next year', onclick: yearNav(1) }, '›')));
+  wrap.append(h('p', { class: 'callout' }, hasDefault
+    ? 'Each column is a month, and this month is highlighted. Change any figure to give that month its own amount. Figures that differ from the default budget have a coral outline. Press Save to keep your changes.'
+    : 'Set the default budget first (the Default budget button above). Then you can adjust single months here.'));
+
+  const cells = [], expEls = [], savEls = {}, rowSums = {}, incSum = h('td', { class: 'num tot' });
+  sc.forEach(c => savEls[c] = []);
+  const mk = (ym, getVal, setVal, defVal) => {
+    const inp = h('input', { class: 'input num', inputmode: 'decimal', placeholder: '0', disabled: ro, 'aria-label': '', value: getVal() });
+    inp.addEventListener('input', () => { setVal(inp.value); dirty(ym); upd(); });
+    cells.push({ inp, getVal, defVal });
+    return inp;
+  };
+  const headCells = months.map(ym => h('th', { class: ym === cur ? 'cur' : '' }, monthName(ym, { month: 'short' })));
+  const thead = h('thead', {}, h('tr', {}, h('th', {}, ''), headCells, h('th', {}, 'Year')));
+  const tbody = h('tbody');
+  const tdCls = ym => 'num' + (ym === cur ? ' cur' : '');
+
+  const incRow = h('tr', {}, h('td', {}, 'Income'), months.map(ym => {
+    const d = Y.months[ym];
+    const inp = mk(ym, () => d.income, v => d.income = v, () => d.defI);
+    inp.setAttribute('aria-label', `Income for ${monthName(ym)}`);
+    return h('td', { class: tdCls(ym) }, inp);
+  }), incSum);
+  tbody.append(incRow);
+
+  rows.forEach(c => {
+    const isExtra = extras.includes(c), sumEl = h('td', { class: 'num tot' });
+    rowSums[c] = sumEl;
+    tbody.append(h('tr', {}, h('td', {}, catLabel(c), isExtra ? h('span', { class: 'tag in', style: 'margin-left:6px' }, 'month only') : null),
+      months.map(ym => {
+        const d = Y.months[ym];
+        if (!(c in d.amounts)) return h('td', { class: tdCls(ym) + ' muted' }, '–');
+        const inp = mk(ym, () => d.amounts[c], v => d.amounts[c] = v, () => d.extra.includes(c) ? null : (d.defA[c] || 0));
+        inp.setAttribute('aria-label', `${catLabel(c)} for ${monthName(ym)}`);
+        return h('td', { class: tdCls(ym) }, inp);
+      }), sumEl));
+  });
+
+  const totTds = months.map((ym, i) => (expEls[i] = h('td', { class: tdCls(ym) + ' tot' })));
+  const grandExp = h('td', { class: 'num tot' });
+  tbody.append(h('tr', { class: 'tot-row' }, h('td', {}, 'Total spending'), totTds, grandExp));
+  const savGrand = {};
+  sc.forEach(c => {
+    savGrand[c] = h('td', { class: 'num tot' });
+    tbody.append(h('tr', {}, h('td', {}, catLabel(c)), months.map((ym, i) => (savEls[c][i] = h('td', { class: tdCls(ym) }))), savGrand[c]));
+  });
+
+  const warn = h('p', { class: 'flag', role: 'status' });
+  function upd() {
+    cells.forEach(({ inp, getVal, defVal }) => {
+      const dv = defVal(); const chg = hasDefault && dv != null && r2(parseMoney(getVal()) || 0) !== r2(dv || 0);
+      inp.classList.toggle('chg', chg);
+    });
+    let gExp = 0, gInc = 0; const gSav = {}; sc.forEach(c => gSav[c] = 0); const over = [];
+    months.forEach((ym, i) => {
+      const d = Y.months[ym], cats = expCats().concat(d.extra);
+      const exp = cats.reduce((a, c) => a + (parseMoney(d.amounts[c]) || 0), 0), inc = parseMoney(d.income) || 0, left = inc - exp;
+      gExp += exp; gInc += inc;
+      expEls[i].textContent = fmt0(exp);
+      sc.forEach(c => { const v = inc ? savShare(ym, c, left) : null; savEls[c][i].textContent = v == null ? '–' : fmt0(v); if (v != null) gSav[c] += v; });
+      if (inc && left < -0.005) over.push(monthName(ym, { month: 'short' }));
+    });
+    incSum.textContent = fmt0(gInc); grandExp.textContent = fmt0(gExp);
+    sc.forEach(c => savGrand[c].textContent = fmt0(gSav[c]));
+    rows.forEach(c => { rowSums[c].textContent = fmt0(months.reduce((a, ym) => a + (parseMoney(Y.months[ym].amounts[c]) || 0), 0)); });
+    warn.textContent = over.length ? `Spending is more than income in ${listJoin(over)}.` : '';
+  }
+  upd();
+  const scroller = h('div', { class: 'scroll-x bgrid' }, h('table', { class: 'year', style: 'min-width:1250px' }, thead, tbody));
+  wrap.append(scroller, warn);
+  if (sc.length) wrap.append(h('p', { class: 'muted', style: 'font-size:.85rem;margin:6px 0 0' }, 'Savings rows are worked out for you: income minus total spending. Figures are rounded to the pound.'));
+  if (S.canWrite) wrap.append(h('div', { class: 'row', style: 'margin-top:14px' },
+    h('button', { class: 'btn primary', onclick: saveYearBudget }, 'Save changes'),
+    h('button', { class: 'btn', onclick: () => { S.yearBudget = null; S.budgetDirty = false; render(true); } }, 'Discard changes')));
+  setTimeout(() => { const th = scroller.querySelector('th.cur'); if (th) scroller.scrollLeft = Math.max(0, th.offsetLeft - 150); }, 0);
+  return wrap;
+}
+async function saveYearBudget(e) {
+  const Y = S.yearBudget;
+  if (!Y || !Y.touched.size) { toast('Nothing has changed.'); return; }
+  const plans = [];
+  for (const ym of [...Y.touched].sort()) {
+    const d = Y.months[ym], b = budgetFor(ym), cats = expCats().concat(d.extra), vals = {};
+    for (const c of cats) {
+      const v = d.amounts[c];
+      if (v === '' || v == null) { vals[c] = 0; continue; }
+      const n = parseMoney(v);
+      if (isNaN(n) || n < 0) { toast(`Check the amount for ${catLabel(c)} in ${monthName(ym)}.`); return; }
+      vals[c] = r2(n);
+    }
+    let income = 0;
+    if (d.income !== '' && d.income != null) {
+      income = parseMoney(d.income);
+      if (isNaN(income) || income < 0) { toast(`Check the income for ${monthName(ym)}.`); return; }
+      income = r2(income);
+    }
+    plans.push({ ym, d, b, cats, vals, income });
+  }
+  e.target.disabled = true;
+  const meta = { updatedBy: S.uid || null, updatedAt: new Date().toISOString() };
+  let done = 0;
+  try {
+    for (const { ym, d, b, cats, vals, income } of plans) {
+      const amounts = {};
+      for (const c of cats) if (d.extra.includes(c) || vals[c] !== r2(b.defAmounts[c] || 0)) amounts[c] = vals[c];
+      const doc = { amounts, extraCats: [...d.extra], ...meta };
+      if (income !== r2(b.defIncome)) doc.income = income;
+      if (!Object.keys(amounts).length && !d.extra.length && doc.income == null) { if (b.custom) await S.db.doc(`budgets/${ym}`).delete(); }
+      else await S.db.doc(`budgets/${ym}`).set(doc);
+      done++;
+    }
+  } catch (err) { e.target.disabled = false; writeErr(err); if (done) toast(`${done} month${done === 1 ? '' : 's'} saved before the problem.`); return; }
+  S.budgetDirty = false; S.yearBudget = null; S.pots = null; S.sav = null; if (S.year.months) S.year.y = null;
+  render(true);
+  toast(`${done} month${done === 1 ? '' : 's'} saved.`);
 }
 async function saveBudget(e) {
   const D = S.budgetDraft, mode = S.budgetMode, b = budgetFor(S.ym);
@@ -890,12 +1048,10 @@ function viewInsights() {
 /* Pots: running totals, counted from POTS_START, for the categories below. */
 const POTS_START = '2026-10';
 const POTS = [
-  { name: 'Savings – Maria' }, { name: 'Savings – Jack' },
+  { name: 'House savings' },
   { name: 'Investing – Maria' }, { name: 'Investing – Jack' },
   { name: 'Travel savings' }, { name: '10%' },
 ];
-/* In these months, Maria's savings are counted in Jack's savings pot instead of being split. */
-const POTS_SAVINGS_ALL_TO_JACK = [];
 const normName = s => String(s || '').toLowerCase().replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim();
 const potLabel = p => catLabel(p.name);
 function potsMonths() { const out = []; for (let ym = POTS_START; ym <= currentYm(); ym = shiftYm(ym, 1)) out.push(ym); return out; }
@@ -907,7 +1063,6 @@ function potAmounts(ym, tx) {
     const c = known.find(k => normName(k) === normName(p.name)) || p.name;
     res[p.name] = sc.includes(c) ? (sav.none ? 0 : sav.eachOf(c)) : (spent[c] || 0);
   });
-  if (POTS_SAVINGS_ALL_TO_JACK.includes(ym)) { res['Savings – Jack'] += res['Savings – Maria']; res['Savings – Maria'] = 0; }
   return res;
 }
 async function ensurePots() {
@@ -965,6 +1120,71 @@ function viewPots() {
   const known = new Set(S.categories.map(normName));
   const missing = POTS.filter(p => !known.has(normName(p.name))).map(p => p.name);
   if (missing.length) wrap.append(h('p', { class: 'muted', style: 'margin-top:14px;font-size:.85rem' }, `No category called ${listJoin(missing.map(n => `“${catLabel(n)}”`))} exists yet, so ${missing.length === 1 ? 'it shows' : 'they show'} £0 unless an expense is recorded under ${missing.length === 1 ? 'that name' : 'those names'}.`));
+  return wrap;
+}
+
+/* ---------- savings forecast ---------- */
+/* Forecast per pot from October 2026. A month that has ended uses its real figure; later months use the budget. */
+const SAV_START = '2026-10', SAV_END = '2027-12';
+const SAV_POTS = ['Travel savings', 'Investing – Maria', 'Investing – Jack', 'House savings'];
+function savMonths() { const out = []; for (let ym = SAV_START; ym <= SAV_END; ym = shiftYm(ym, 1)) out.push(ym); return out; }
+function savFigures(ym, tx) {
+  const p = plan(ym), spent = spendingBy(tx || []), cur = currentYm(), done = ym < cur, sc = savCats();
+  const res = {};
+  SAV_POTS.forEach(name => {
+    const c = S.categories.find(k => normName(k) === normName(name)) || name;
+    let f, a = null;
+    if (sc.includes(c)) {
+      const o = savingsOutcome(ym, spent);
+      if (done) { a = o.none ? 0 : o.total; f = a; }
+      else if (ym === cur) f = o.none ? 0 : o.total;
+      else f = p.income ? p.savings : 0;
+    } else {
+      const bud = Number(p.amounts[c] || 0), sp = spent[c] || 0;
+      if (done) { a = sp; f = sp; } else if (ym === cur) f = Math.max(bud, sp); else f = bud;
+    }
+    res[name] = { f, a };
+  });
+  return res;
+}
+async function ensureSav() {
+  const mine = S.sav = { loading: true };
+  render();
+  const months = savMonths(), cur = currentYm();
+  try {
+    const res = await Promise.all(months.map(ym => ym <= cur ? fetchMonth(ym) : Promise.resolve(null)));
+    if (S.sav === mine) S.sav = { months: months.map((ym, i) => ({ ym, fig: savFigures(ym, res[i]), done: ym < cur })) };
+  } catch (e) { if (S.sav === mine) S.sav = { error: true }; }
+  if (S.tab === 'savings') render();
+}
+function viewSavings() {
+  const wrap = h('div', {});
+  wrap.append(h('h4', { class: 'sec', style: 'margin-top:0' }, `Savings forecast from ${monthName(SAV_START)}`),
+    h('p', { class: 'muted', style: 'margin:0 0 10px;font-size:.9rem;max-width:64ch' },
+      'The big figure is the forecast: months that have ended use what really happened, and later months use the budget. Once a month has ended, a second figure appears with the actual only.'));
+  if (!S.sav) { setTimeout(ensureSav, 0); S.sav = { loading: true }; }
+  if (S.sav.loading) { wrap.append(h('p', { class: 'muted' }, h('span', { class: 'spinner' }), 'Adding up your savings')); return wrap; }
+  if (S.sav.error) { wrap.append(h('p', { class: 'empty' }, 'Couldn’t load the savings. ', h('button', { class: 'btn link', onclick: () => ensureSav() }, 'Try again'))); return wrap; }
+  const months = S.sav.months;
+  const sum = (list, name, key) => list.reduce((a, m) => a + (m.fig[name][key] || 0), 0);
+  const quarters = [];
+  months.forEach(m => { const [y, mo] = m.ym.split('-').map(Number), k = `Q${Math.ceil(mo / 3)} ${y}`; let q = quarters.find(x => x.k === k); if (!q) quarters.push(q = { k, list: [] }); q.list.push(m); });
+  const cell = (list, name) => {
+    const doneList = list.filter(m => m.done);
+    const td = h('td', { class: 'num' }, h('div', { class: 'sv-f' }, money(sum(list, name, 'f'))));
+    if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(sum(doneList, name, 'a'))}`));
+    return td;
+  };
+  const table = (rowsDef, firstHead) => h('div', { class: 'scroll-x sv' }, h('table', { class: 'year', style: 'min-width:560px' },
+    h('thead', {}, h('tr', {}, h('th', {}, firstHead), SAV_POTS.map(n => h('th', {}, catLabel(n))), h('th', {}, 'All four'))),
+    h('tbody', {}, rowsDef.map(r => h('tr', { class: r.total ? 'tot-row' : '' }, h('td', {}, r.label), SAV_POTS.map(n => cell(r.list, n)),
+      (() => { const doneList = r.list.filter(m => m.done), all = SAV_POTS.reduce((a, n) => a + sum(r.list, n, 'f'), 0); const td = h('td', { class: 'num tot' }, h('div', { class: 'sv-f' }, money(all))); if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(SAV_POTS.reduce((a, n) => a + sum(doneList, n, 'a'), 0))}`)); return td; })())))));
+  wrap.append(h('h4', { class: 'sec' }, 'By quarter'),
+    table([...quarters.map(q => ({ label: q.k, list: q.list })), { label: 'Total', list: months, total: true }], 'Quarter'));
+  wrap.append(h('details', { class: 'manage', style: 'margin-top:22px' }, h('summary', {}, 'Month by month'),
+    table(months.map(m => ({ label: monthName(m.ym, { month: 'short', year: 'numeric' }), list: [m] })), 'Month')));
+  const missing = SAV_POTS.filter(n => !S.categories.some(k => normName(k) === normName(n)));
+  if (missing.length) wrap.append(h('p', { class: 'muted', style: 'margin-top:14px;font-size:.85rem' }, `No category called ${listJoin(missing.map(n => `“${n}”`))} exists yet, so ${missing.length === 1 ? 'it shows' : 'they show'} £0.`));
   return wrap;
 }
 
@@ -1652,18 +1872,18 @@ async function startApp(session) {
   const d = db;
   d.doc('settings/main').onSnapshot(s => {
     const data = s.exists ? s.data() : {};
-    if (JSON.stringify(data) !== JSON.stringify(S.settings)) { S.budgetDraft = null; S.budgetDirty = false; }
+    if (JSON.stringify(data) !== JSON.stringify(S.settings)) { S.budgetDraft = null; S.yearBudget = null; S.budgetDirty = false; }
     S.settings = data; S.categories = [...new Set((data.categories || []).map(mapCat))]; S.settingsLoaded = true; render();
   }, onDbErr);
-  d.doc('settings/default').onSnapshot(s => { S.defaultBudget = s.exists ? s.data() : {}; if (!S.budgetDirty) S.budgetDraft = null; render(); }, onDbErr);
+  d.doc('settings/default').onSnapshot(s => { S.defaultBudget = s.exists ? s.data() : {}; S.sav = null; S.pots = null; if (!S.budgetDirty) { S.budgetDraft = null; S.yearBudget = null; } render(); }, onDbErr);
   d.doc('settings/merchants').onSnapshot(s => { S.merchants = s.exists ? (s.data().map || {}) : {}; }, () => {});
-  d.collection('budgets').onSnapshot(qs => { const b = {}; qs.docs.forEach(x => b[x.id] = x.data()); S.budgets = b; if (!S.budgetDirty) S.budgetDraft = null; render(); }, onDbErr);
+  d.collection('budgets').onSnapshot(qs => { const b = {}; qs.docs.forEach(x => b[x.id] = x.data()); S.budgets = b; S.sav = null; S.pots = null; if (!S.budgetDirty) { S.budgetDraft = null; S.yearBudget = null; } render(); }, onDbErr);
   subscribeMonth();
   if (S.tab === 'year') ensureYear();
   sb.channel('budget-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => bump('app_settings'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'month_budgets' }, () => bump('month_budgets'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => { bump('transactions'); S.pots = null; if (S.year.months) S.year.y = null; })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => { bump('transactions'); S.pots = null; S.sav = null; if (S.year.months) S.year.y = null; })
     .subscribe();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Object.keys(refreshers).forEach(bump); });
 }
