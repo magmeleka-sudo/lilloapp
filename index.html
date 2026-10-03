@@ -303,6 +303,16 @@ const CAT_MERGE = { 'council tax': 'Bills', 'clothes - maria': 'Pocket money –
 const APP_START = '2026-10';
 const mapCat = c => CAT_MERGE[normName(c)] || c;
 function mapAmounts(a) { const out = {}; Object.entries(a || {}).forEach(([k, v]) => { const t = mapCat(k); out[t] = r2((out[t] || 0) + Number(v || 0)); }); return out; }
+/* A month's amounts = the default's, overridden by the month's own. For a merged category, a figure saved under the new name replaces the whole thing; figures saved under old names are added up. */
+function mergeBudgetAmounts(da, ma) {
+  da = da || {}; ma = ma || {};
+  const keys = [...new Set([...Object.keys(da), ...Object.keys(ma)])], out = {};
+  new Set(keys.map(mapCat)).forEach(t => {
+    if (t in ma) out[t] = r2(Number(ma[t] || 0));
+    else out[t] = r2(keys.filter(k => mapCat(k) === t).reduce((a, k) => a + Number((k in ma ? ma[k] : da[k]) || 0), 0));
+  });
+  return out;
+}
 /* Categories not offered in the pick-a-category lists when adding, scanning or importing (they still exist in Budget, Overview and Expenses). */
 const PICK_HIDDEN = ['Rent', 'House savings', 'Investing – Maria', 'Investing – Jack', 'Travel savings', 'Loan', 'Pocket money – Maria', 'Pocket money – Jack', '10%', 'Credit Card settlement'].map(c => c.toLowerCase().replace(/[‐-―−]/g, '-'));
 const hiddenFromPick = c => PICK_HIDDEN.includes(normName(c));
@@ -330,7 +340,7 @@ function budgetFor(ym) {
   const extra = [...new Set((m.extraCats || []).map(mapCat))].filter(c => !S.categories.includes(c));
   return {
     income: m.income != null ? Number(m.income) || 0 : Number(d.income) || 0,
-    amounts: mapAmounts({ ...(d.amounts || {}), ...(m.amounts || {}) }),
+    amounts: mergeBudgetAmounts(d.amounts, m.amounts),
     defAmounts: mapAmounts(d.amounts), defIncome: Number(d.income) || 0,
     overrides: mapAmounts(m.amounts), incomeOverride: m.income != null,
     extra, custom: !!S.budgets[ym],
