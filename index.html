@@ -1151,7 +1151,7 @@ function savFigures(ym, tx) {
       else f = p.income ? p.savings : 0;
     } else {
       const bud = Number(p.amounts[c] || 0), sp = spent[c] || 0;
-      if (done) { a = sp; f = sp; } else if (ym === cur) f = Math.max(bud, sp); else f = bud;
+      if (done) { a = sp; f = sp; } else if (ym === cur) { f = Math.max(bud, sp); a = sp; } else f = bud;
     }
     res[name] = { f, a };
   });
@@ -1171,7 +1171,7 @@ function viewSavings() {
   const wrap = h('div', {});
   wrap.append(h('h4', { class: 'sec', style: 'margin-top:0' }, `Savings forecast from ${monthName(SAV_START)}`),
     h('p', { class: 'muted', style: 'margin:0 0 10px;font-size:.9rem;max-width:64ch' },
-      'The big figure is the forecast: months that have ended use what really happened, and later months use the budget. Once a month has ended, a second figure appears with the actual only (also a running total).'));
+      'The big figure is the forecast: months that have ended use what really happened, and later months use the budget. A second, smaller figure shows the actual only: it appears as soon as you record spending, says "so far" while the month is still running, and becomes final when the month ends. House savings has no actual until the month ends, because savings are only known once spending is finished.'));
   if (!S.sav) { setTimeout(ensureSav, 0); S.sav = { loading: true }; }
   if (S.sav.loading) { wrap.append(h('p', { class: 'muted' }, h('span', { class: 'spinner' }), 'Adding up your savings')); return wrap; }
   if (S.sav.error) { wrap.append(h('p', { class: 'empty' }, 'Couldn’t load the savings. ', h('button', { class: 'btn link', onclick: () => ensureSav() }, 'Try again'))); return wrap; }
@@ -1179,16 +1179,19 @@ function viewSavings() {
   const sum = (list, name, key) => list.reduce((a, m) => a + (m.fig[name][key] || 0), 0);
   const quarters = [];
   months.forEach(m => { const [y, mo] = m.ym.split('-').map(Number), k = `Q${Math.ceil(mo / 3)} ${y}`; let q = quarters.find(x => x.k === k); if (!q) quarters.push(q = { k, list: [] }); q.list.push(m); });
-  const cell = (list, name) => {
-    const doneList = list.filter(m => m.done);
-    const td = h('td', { class: 'num' }, h('div', { class: 'sv-f' }, money(sum(list, name, 'f'))));
-    if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(sum(doneList, name, 'a'))}`));
-    return td;
+  /* "Actual" appears as soon as there is something real: the finished months, plus what has been spent so far this month. */
+  const actualLine = (list, names) => {
+    const has = list.filter(m => names.some(n => m.fig[n].a != null));
+    if (!has.length) return null;
+    const partial = has.some(m => !m.done), total = names.reduce((a, n) => a + sum(has, n, 'a'), 0);
+    if (!has.some(m => m.done) && Math.abs(total) < 0.005) return null;
+    return h('div', { class: 'sv-a' }, `${partial ? 'Actual so far' : 'Actual'} ${money(total)}`);
   };
+  const cell = (list, name) => h('td', { class: 'num' }, h('div', { class: 'sv-f' }, money(sum(list, name, 'f'))), actualLine(list, [name]));
   const table = (rowsDef, firstHead) => h('div', { class: 'scroll-x sv' }, h('table', { class: 'year', style: 'min-width:680px' },
     h('thead', {}, h('tr', {}, h('th', {}, firstHead), SAV_POTS.map(n => h('th', {}, catLabel(n))), h('th', {}, 'All'))),
     h('tbody', {}, rowsDef.map(r => h('tr', { class: r.total ? 'tot-row' : '' }, h('td', {}, r.label), SAV_POTS.map(n => cell(r.list, n)),
-      (() => { const doneList = r.list.filter(m => m.done), all = SAV_POTS.reduce((a, n) => a + sum(r.list, n, 'f'), 0); const td = h('td', { class: 'num tot' }, h('div', { class: 'sv-f' }, money(all))); if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(SAV_POTS.reduce((a, n) => a + sum(doneList, n, 'a'), 0))}`)); return td; })())))));
+      h('td', { class: 'num tot' }, h('div', { class: 'sv-f' }, money(SAV_POTS.reduce((a, n) => a + sum(r.list, n, 'f'), 0))), actualLine(r.list, SAV_POTS)))))));
   wrap.append(h('h4', { class: 'sec' }, 'Running total by quarter'),
     h('p', { class: 'muted', style: 'margin:0 0 8px;font-size:.9rem' }, `Each row adds up everything from ${monthName(SAV_START)} to the end of that quarter, so the last row is the grand total.`),
     table(quarters.map((q, i) => ({ label: q.k, list: quarters.slice(0, i + 1).flatMap(x => x.list) })), 'Up to end of'));
