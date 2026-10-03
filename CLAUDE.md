@@ -14,7 +14,12 @@ A household budget web app shared by Maria and her husband Jack.
 ## Hosting and publishing
 - Hosted with GitHub Pages at https://magmeleka-sudo.github.io/lilloapp/
 - Repository: https://github.com/magmeleka-sudo/lilloapp (public), branch `main`.
-- **Pushing to `main` updates the live app within 1-2 minutes.** Always show Maria the changes (a summary and the diff) and ask before pushing. Never push without a clear yes.
+- **Pushing to `main` updates the live app within 1-2 minutes.**
+- Push rule (agreed with Maria on 2026-10-03):
+  - **Safe changes: push without asking**, then tell Maria afterwards what changed. Safe means display-only tweaks that do not change any figure or behaviour: wording and labels, colours, fonts, spacing, small layout fixes, typos. Check the page loads with no errors first.
+  - **Everything else: show the changes and ask for a clear yes before pushing.** This includes anything touching money figures, totals, savings or budget calculations, categories, sign-in, reading or writing the database, new features or tabs, and removing anything.
+  - If unsure whether a change is safe, ask.
+  - Every push is saved in git history, so a bad update can be rolled back.
 - GitHub account to use: the PERSONAL account `magmeleka-sudo`, not her work account.
 
 ## Data (Supabase)
@@ -29,5 +34,8 @@ A household budget web app shared by Maria and her husband Jack.
 - Never write SQL that deletes or overwrites existing data (no DROP, TRUNCATE, or DELETE without a clear request). Keep RLS on for any new table.
 
 ## Working agreements
-- Show changes and ask before pushing.
+- Follow the push rule above: ask before pushing anything that is not a safe display-only change.
+- Preview with real data: serve index.html on localhost and let Maria sign in herself in the Browser pane. Never enter her password. Anything saved there writes to her real database.
+- Display names: `CAT_LABELS` in index.html maps stored category names to display names (the "10%" category shows as "God’s Shares"). The stored name is unchanged.
+- October 2026 savings go entirely to "Savings – Jack" (`POTS_SAVINGS_ALL_TO_JACK`); other months split equally. The Insights > Pots tab keeps running totals from October 2026 (`POTS_START`).
 - Keep explanations simple; avoid jargon, or explain it when used.
