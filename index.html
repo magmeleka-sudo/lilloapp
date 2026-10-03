@@ -1171,7 +1171,7 @@ function viewSavings() {
   const wrap = h('div', {});
   wrap.append(h('h4', { class: 'sec', style: 'margin-top:0' }, `Savings forecast from ${monthName(SAV_START)}`),
     h('p', { class: 'muted', style: 'margin:0 0 10px;font-size:.9rem;max-width:64ch' },
-      'The big figure is the forecast: months that have ended use what really happened, and later months use the budget. Once a month has ended, a second figure appears with the actual only.'));
+      'The big figure is the forecast: months that have ended use what really happened, and later months use the budget. Once a month has ended, a second figure appears with the actual only (also a running total).'));
   if (!S.sav) { setTimeout(ensureSav, 0); S.sav = { loading: true }; }
   if (S.sav.loading) { wrap.append(h('p', { class: 'muted' }, h('span', { class: 'spinner' }), 'Adding up your savings')); return wrap; }
   if (S.sav.error) { wrap.append(h('p', { class: 'empty' }, 'Couldn’t load the savings. ', h('button', { class: 'btn link', onclick: () => ensureSav() }, 'Try again'))); return wrap; }
@@ -1189,9 +1189,10 @@ function viewSavings() {
     h('thead', {}, h('tr', {}, h('th', {}, firstHead), SAV_POTS.map(n => h('th', {}, catLabel(n))), h('th', {}, 'All'))),
     h('tbody', {}, rowsDef.map(r => h('tr', { class: r.total ? 'tot-row' : '' }, h('td', {}, r.label), SAV_POTS.map(n => cell(r.list, n)),
       (() => { const doneList = r.list.filter(m => m.done), all = SAV_POTS.reduce((a, n) => a + sum(r.list, n, 'f'), 0); const td = h('td', { class: 'num tot' }, h('div', { class: 'sv-f' }, money(all))); if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(SAV_POTS.reduce((a, n) => a + sum(doneList, n, 'a'), 0))}`)); return td; })())))));
-  wrap.append(h('h4', { class: 'sec' }, 'By quarter'),
-    table([...quarters.map(q => ({ label: q.k, list: q.list })), { label: 'Total', list: months, total: true }], 'Quarter'));
-  wrap.append(h('details', { class: 'manage', style: 'margin-top:22px' }, h('summary', {}, 'Month by month'),
+  wrap.append(h('h4', { class: 'sec' }, 'Running total by quarter'),
+    h('p', { class: 'muted', style: 'margin:0 0 8px;font-size:.9rem' }, `Each row adds up everything from ${monthName(SAV_START)} to the end of that quarter, so the last row is the grand total.`),
+    table(quarters.map((q, i) => ({ label: q.k, list: quarters.slice(0, i + 1).flatMap(x => x.list) })), 'Up to end of'));
+  wrap.append(h('details', { class: 'manage', style: 'margin-top:22px' }, h('summary', {}, 'Month by month (what each month adds)'),
     table(months.map(m => ({ label: monthName(m.ym, { month: 'short', year: 'numeric' }), list: [m] })), 'Month')));
   const missing = SAV_POTS.filter(n => !S.categories.some(k => normName(k) === normName(n)));
   if (missing.length) wrap.append(h('p', { class: 'muted', style: 'margin-top:14px;font-size:.85rem' }, `No category called ${listJoin(missing.map(n => `“${n}”`))} exists yet, so ${missing.length === 1 ? 'it shows' : 'they show'} £0.`));
