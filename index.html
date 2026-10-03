@@ -279,6 +279,13 @@ const normKey = s => String(s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim
 /* Display names only. The stored category name never changes, so old expenses and budgets keep working. */
 const CAT_LABELS = { '10%': 'God’s Shares' };
 const catLabel = c => CAT_LABELS[c] || c;
+/* Merged categories: stored data is never rewritten. On load, each old category is counted under its new home, and budget amounts are added together. */
+const CAT_MERGE = { 'council tax': 'Bills', 'clothes - maria': 'Pocket money – Maria', 'clothes - jack': 'Pocket money – Jack' };
+const mapCat = c => CAT_MERGE[normName(c)] || c;
+function mapAmounts(a) { const out = {}; Object.entries(a || {}).forEach(([k, v]) => { const t = mapCat(k); out[t] = r2((out[t] || 0) + Number(v || 0)); }); return out; }
+/* Categories not offered in the pick-a-category lists when adding, scanning or importing (they still exist in Budget, Overview and Expenses). */
+const PICK_HIDDEN = ['Rent', 'Savings – Maria', 'Savings – Jack', 'Investing – Maria', 'Investing – Jack', 'Travel savings', 'Loan', 'Pocket money – Maria', 'Pocket money – Jack', '10%', 'Credit Card settlement'].map(c => c.toLowerCase().replace(/[‐-―−]/g, '-'));
+const hiddenFromPick = c => PICK_HIDDEN.includes(normName(c));
 function listJoin(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
 function initials(n) { return String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''); }
 let toastTimer;
@@ -300,12 +307,12 @@ let unsubMonth = null;
 /* A month's budget = the default budget, plus that month's own changes and extra categories. */
 function budgetFor(ym) {
   const d = S.defaultBudget || {}, m = S.budgets[ym] || {};
-  const extra = (m.extraCats || []).filter(c => !S.categories.includes(c));
+  const extra = [...new Set((m.extraCats || []).map(mapCat))].filter(c => !S.categories.includes(c));
   return {
     income: m.income != null ? Number(m.income) || 0 : Number(d.income) || 0,
-    amounts: { ...(d.amounts || {}), ...(m.amounts || {}) },
-    defAmounts: d.amounts || {}, defIncome: Number(d.income) || 0,
-    overrides: m.amounts || {}, incomeOverride: m.income != null,
+    amounts: mapAmounts({ ...(d.amounts || {}), ...(m.amounts || {}) }),
+    defAmounts: mapAmounts(d.amounts), defIncome: Number(d.income) || 0,
+    overrides: mapAmounts(m.amounts), incomeOverride: m.income != null,
     extra, custom: !!S.budgets[ym],
   };
 }
@@ -1104,7 +1111,7 @@ function openTx(t) {
   const amt = h('input', { class: 'input num', id: 'fAmt', inputmode: 'decimal', value: t ? String(Math.abs(t.amount)) : '', placeholder: '0.00', required: true });
   const isIn = h('input', { type: 'checkbox', id: 'fIn' }); isIn.checked = !!(t && t.amount < 0);
   const cat = h('select', { class: 'input', id: 'fCat' }, h('option', { value: '' }, 'Choose a category'),
-    [...expCats(S.ym), ...(t && !expCats(S.ym).includes(t.category) ? [t.category] : [])].map(c => h('option', { value: c }, catLabel(c))));
+    [...expCats(S.ym).filter(c => !hiddenFromPick(c) || (t && c === t.category)), ...(t && !expCats(S.ym).includes(t.category) ? [t.category] : [])].map(c => h('option', { value: c }, catLabel(c))));
   cat.value = t ? t.category : (S.filter && expCats(S.ym).includes(S.filter) ? S.filter : '');
   const defDate = t ? t.date : (S.ym === currentYm() ? todayIso() : `${S.ym}-01`);
   const date = h('input', { class: 'input', type: 'date', id: 'fDate', value: defDate, required: true });
@@ -1214,7 +1221,7 @@ async function renderImport() {
       const date = h('input', { class: 'input', type: 'date', value: r.date, 'aria-label': 'Date', onchange: e => { r.date = e.target.value; updSummary(); } });
       const amt = h('div', { class: 'money-in' }, h('input', { class: 'input num', inputmode: 'decimal', value: r.amount > 0 ? r.amount.toFixed(2) : '', placeholder: '0.00', 'aria-label': 'Amount', onchange: e => { const n = parseMoney(e.target.value); if (n > 0) r.amount = r2(n); updSummary(); } }));
       const desc = h('input', { class: 'input', value: r.description, 'aria-label': 'Description', onchange: e => r.description = e.target.value });
-      const cat = h('select', { class: 'input', 'aria-label': 'Category', onchange: e => r.category = e.target.value }, h('option', { value: '' }, 'Choose a category'), expCats(S.ym).map(c => h('option', { value: c }, catLabel(c))));
+      const cat = h('select', { class: 'input', 'aria-label': 'Category', onchange: e => r.category = e.target.value }, h('option', { value: '' }, 'Choose a category'), expCats(S.ym).filter(c => !hiddenFromPick(c) || c === r.category).map(c => h('option', { value: c }, catLabel(c))));
       cat.value = r.category;
       const tags = h('div', { class: 'span2' }, r.dup ? h('span', { class: 'tag dup' }, 'Looks already added') : null, r.incoming ? h('span', { class: 'tag in' }, 'Money in') : null);
       rowEl.append(box, date, amt, h('span'), h('div', { class: 'span2' }, desc), h('span'), h('div', { class: 'span2' }, cat));
@@ -1329,14 +1336,14 @@ const KEYWORDS = [
   [/tesco|sainsbury|asda|aldi|lidl|waitrose|morrisons|\bco-?op\b|ocado|iceland|whole ?foods|m&s food|grocer/i, 'Grocery'],
   [/\btfl\b|transport for london|uber(?! ?eats)|\bbolt\b|trainline|national rail|\bgwr\b|\bshell\b|\bbp\b|esso|texaco|petrol|parking|ringgo|paybyphone/i, 'Transportation'],
   [/netflix|spotify|disney|cinema|odeon|\bvue\b|cineworld|prime video|youtube premium/i, 'Entertainment'],
-  [/council tax|ealing council/i, 'Council tax'],
+  [/council tax|ealing council/i, 'Bills'],
   [/\brent\b|letting/i, 'Rent'],
   [/nursery/i, 'Nursery'],
   [/octopus|british gas|\bedf\b|thames water|vodafone|\bo2\b|virgin media|\bbt\b|\bsky\b|tv licen|giffgaff|\bee\b/i, 'Bills'],
   [/puregym|the gym|fitness|gymshark/i, 'Training'],
 ];
 function guessCategory(desc) {
-  const cats = expCats(S.ym);
+  const cats = expCats(S.ym).filter(c => !hiddenFromPick(c));
   for (const [re, c] of KEYWORDS) if (re.test(desc) && cats.includes(c)) return c;
   return '';
 }
@@ -1348,8 +1355,8 @@ function normRow(r) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = S.ym === currentYm() ? todayIso() : `${S.ym}-01`;
   const description = String(r.description || '').trim().slice(0, 120);
   const incoming = !!r.incoming;
-  const known = S.merchants[normKey(description)];
-  const category = known && expCats(S.ym).includes(known) ? known : guessCategory(description);
+  const known = mapCat(S.merchants[normKey(description)] || '');
+  const category = known && expCats(S.ym).includes(known) && !hiddenFromPick(known) ? known : guessCategory(description);
   return { date, description, amount: r2(amt), incoming, category, include: !incoming, dup: false };
 }
 async function readImport() {
@@ -1527,7 +1534,7 @@ function parsePath(path) {
   if (p[0] === 'months') return p[3] ? { kind: 'tx', ym: p[1], id: p[3], table: 'transactions' } : { kind: 'txs', ym: p[1], table: 'transactions' };
   throw new Error('Unknown path ' + path);
 }
-const txDoc = r => ({ id: r.id, data: () => ({ date: r.date, amount: Number(r.amount), category: r.category, note: r.note || '', source: r.source || 'manual', by: r.created_by_email || null, createdAt: r.created_at }) });
+const txDoc = r => ({ id: r.id, data: () => ({ date: r.date, amount: Number(r.amount), category: mapCat(r.category), note: r.note || '', source: r.source || 'manual', by: r.created_by_email || null, createdAt: r.created_at }) });
 function txRow(id, d) {
   const row = { id, date: d.date, amount: r2(d.amount), category: d.category, note: d.note || '', source: d.source || 'manual' };
   if (d.createdAt) row.created_at = d.createdAt;
@@ -1639,7 +1646,7 @@ async function startApp(session) {
   d.doc('settings/main').onSnapshot(s => {
     const data = s.exists ? s.data() : {};
     if (JSON.stringify(data) !== JSON.stringify(S.settings)) { S.budgetDraft = null; S.budgetDirty = false; }
-    S.settings = data; S.categories = data.categories || []; S.settingsLoaded = true; render();
+    S.settings = data; S.categories = [...new Set((data.categories || []).map(mapCat))]; S.settingsLoaded = true; render();
   }, onDbErr);
   d.doc('settings/default').onSnapshot(s => { S.defaultBudget = s.exists ? s.data() : {}; if (!S.budgetDirty) S.budgetDraft = null; render(); }, onDbErr);
   d.doc('settings/merchants').onSnapshot(s => { S.merchants = s.exists ? (s.data().map || {}) : {}; }, () => {});
