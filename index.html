@@ -231,7 +231,7 @@ dialog::backdrop{background:rgba(10,20,16,.45)}
 <div class="wrap">
   <div class="top">
     <h1 class="brand">LilloApp</h1>
-    <div class="row" style="gap:16px"><button class="today-link" id="todayBtn" hidden>Back to this month</button><button class="today-link" id="signOut" hidden style="color:var(--muted)">Sign out</button></div>
+    <div class="row" style="gap:16px"><button class="today-link" id="todayBtn" hidden>Back to this month</button><button class="today-link" id="signOut" hidden style="color:var(--muted)">Log out</button></div>
   </div>
   <div class="month">
     <h2 id="monthLabel" class="num">&nbsp;</h2>
@@ -295,7 +295,7 @@ function dayLabel(iso) { const [y, m, d] = iso.split('-').map(Number); return ne
 function parseMoney(v) { const n = parseFloat(String(v).replace(/[£,\s]/g, '')); return isFinite(n) ? n : NaN; }
 const normKey = s => String(s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim().split(' ').slice(0, 3).join(' ');
 /* Display names only. The stored category name never changes, so old expenses and budgets keep working. */
-const CAT_LABELS = { '10%': 'God’s Shares', 'Grocery': 'Groceries', 'Transportation': 'Transport' };
+const CAT_LABELS = { '10%': 'God’s Shares', 'Grocery': 'Groceries', 'Transportation': 'Transport', 'Misc': 'Other' };
 const catLabel = c => CAT_LABELS[c] || c;
 /* Merged categories: stored data is never rewritten. On load, each old category is counted under its new home, and budget amounts are added together. */
 const CAT_MERGE = { 'council tax': 'Bills', 'clothes - maria': 'Pocket money – Maria', 'clothes - jack': 'Pocket money – Jack', 'savings - maria': 'House savings', 'savings - jack': 'House savings' };
@@ -419,7 +419,7 @@ function render(force) {
   let content;
   if (S.signedOut) { document.body.classList.add('signed-out'); main.replaceChildren(viewLogin()); return; }
   document.body.classList.remove('signed-out');
-  if (S.noDb) content = h('p', { class: 'empty' }, 'Your sign-in has expired. Sign out and sign in again.');
+  if (S.noDb) content = h('p', { class: 'empty' }, 'Your login has expired. Log out and log in again.');
   else if (!S.ready || !S.settingsLoaded) content = h('p', { class: 'muted' }, h('span', { class: 'spinner' }), 'Loading your budget');
   else if (S.tab === 'expenses') content = viewExpenses();
   else if (S.tab === 'budget') content = viewBudget();
@@ -616,7 +616,7 @@ function viewPaidTable() {
 }
 async function setPaid(cat, value) {
   const n = String(value).trim() === '' ? 0 : parseMoney(value);
-  if (isNaN(n) || n < 0) { toast(`Check the amount for ${cat}.`); render(true); return; }
+  if (isNaN(n) || n < 0) { toast(`Check the amount for ${catLabel(cat)}.`); render(true); return; }
   const ym = S.ym, date = ym === currentYm() ? todayIso() : (ym < currentYm() ? `${ym}-${pad(daysIn(ym))}` : `${ym}-01`);
   const id = quickId(cat) + '-' + date.slice(8);
   const quick = S.tx.find(t => t.id === id);
@@ -650,7 +650,7 @@ function viewTxList(head) {
   const wrap = h('div', {}, head, chips);
   if (!S.txLoaded) { wrap.append(h('p', { class: 'muted' }, h('span', { class: 'spinner' }), 'Loading expenses')); return wrap; }
   if (!list.length) {
-    wrap.append(h('p', { class: 'empty' }, S.filter ? `Nothing in ${S.filter} for ${monthName(S.ym, { month: 'long' })} yet.` : `No expenses for ${monthName(S.ym, { month: 'long' })} yet. Add one, or import a CSV from your bank.`));
+    wrap.append(h('p', { class: 'empty' }, S.filter ? `Nothing in ${catLabel(S.filter)} for ${monthName(S.ym, { month: 'long' })} yet.` : `No expenses for ${monthName(S.ym, { month: 'long' })} yet. Add one, or import a CSV from your bank.`));
     return wrap;
   }
   let lastDay = null;
@@ -908,7 +908,7 @@ async function saveBudget(e) {
     const v = D.amounts[c];
     if (v === '' || v == null) { vals[c] = 0; continue; }
     const n = parseMoney(v);
-    if (isNaN(n) || n < 0) { toast(`Check the amount for ${c}.`); return; }
+    if (isNaN(n) || n < 0) { toast(`Check the amount for ${catLabel(c)}.`); return; }
     vals[c] = r2(n);
   }
   let income = 0;
@@ -1041,7 +1041,7 @@ async function exportDaily() {
   const rows = ['Date,Description,Category,Amount,Day total,Running total,Added by'];
   let run = 0;
   const dayTot = {}; list.forEach(t => dayTot[t.date] = (dayTot[t.date] || 0) + Number(t.amount || 0));
-  list.forEach(t => { run += Number(t.amount || 0); rows.push([t.date, t.note, t.category, Number(t.amount).toFixed(2), dayTot[t.date].toFixed(2), run.toFixed(2), t.by ? ((ps[t.by] && ps[t.by].name) || '') : ''].map(q).join(',')); });
+  list.forEach(t => { run += Number(t.amount || 0); rows.push([t.date, t.note, catLabel(t.category), Number(t.amount).toFixed(2), dayTot[t.date].toFixed(2), run.toFixed(2), t.by ? ((ps[t.by] && ps[t.by].name) || '') : ''].map(q).join(',')); });
   try { await S.downloads.save({ filename: `daily-report-${S.ym}.csv`, data: rows.join('\n') }); }
   catch (e) { if (e.code === 'unavailable' || e.code === 'not_granted') { S.downloads = null; render(); } else if (e.code !== 'declined') toast('Download didn’t start. Try again.'); }
 }
@@ -1319,9 +1319,9 @@ async function runInsights(q, qMonths, data) {
     const d = data[ym], m = monthName(ym, { month: 'short' });
     if (d.plan.income) lines.push(`${m}: income ${r2(d.plan.income)}, spending budget ${r2(d.plan.expBudget)}, planned savings ${r2(d.plan.savings)}, ${d.sav.final ? 'actual' : 'projected'} savings ${r2(d.sav.total)}`);
   });
-  ec.forEach(c => lines.push(`${c}: ` + qMonths.map(ym => `${monthName(ym, { month: 'short' })} budget ${r2(data[ym].plan.amounts[c] || 0)}, spent ${r2(data[ym].spent[c] || 0)}`).join('; ')));
+  ec.forEach(c => lines.push(`${catLabel(c)}: ` + qMonths.map(ym => `${monthName(ym, { month: 'short' })} budget ${r2(data[ym].plan.amounts[c] || 0)}, spent ${r2(data[ym].spent[c] || 0)}`).join('; ')));
   const extra = new Set(); qMonths.forEach(ym => Object.keys(data[ym].spent).forEach(c => { if (!ec.includes(c)) extra.add(c); }));
-  extra.forEach(c => lines.push(`${c} (no budget): ` + qMonths.map(ym => `${monthName(ym, { month: 'short' })} spent ${r2(data[ym].spent[c] || 0)}`).join('; ')));
+  extra.forEach(c => lines.push(`${catLabel(c)} (no budget): ` + qMonths.map(ym => `${monthName(ym, { month: 'short' })} spent ${r2(data[ym].spent[c] || 0)}`).join('; ')));
   const prompt = `You're helping a couple in the UK review their household budget for Q${q} ${S.year.y} (${qMonths.map(ym => monthName(ym, { month: 'long' })).join(', ')}). All figures are in GBP.
 How their budget works: they enter their monthly income, budget each spending category, and whatever income is left is saved automatically, split equally between ${sc.length ? listJoin(sc) : 'their savings'}. So every pound not spent becomes savings. Investing and Travel savings are money set aside, not spending. Rent, loan and council tax are hard to change, so focus ideas elsewhere.
 
@@ -1734,7 +1734,7 @@ async function exportCsv() {
   const ids = [...new Set(list.map(t => t.by).filter(Boolean))];
   const ps = S.user && ids.length ? await S.user.profiles(ids) : {};
   const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const csv = ['Date,Description,Category,Amount,Added by', ...list.map(t => [t.date, t.note, t.category, Number(t.amount).toFixed(2), t.by ? ((ps[t.by] && ps[t.by].name) || '') : ''].map(q).join(','))].join('\n');
+  const csv = ['Date,Description,Category,Amount,Added by', ...list.map(t => [t.date, t.note, catLabel(t.category), Number(t.amount).toFixed(2), t.by ? ((ps[t.by] && ps[t.by].name) || '') : ''].map(q).join(','))].join('\n');
   try { await S.downloads.save({ filename: `budget-${S.ym}${S.filter ? '-' + S.filter.toLowerCase().replace(/\W+/g, '-') : ''}.csv`, data: csv }); }
   catch (e) { if (e.code === 'unavailable' || e.code === 'not_granted') { S.downloads = null; render(); } else if (e.code !== 'declined') toast('Download didn’t start. Try again.'); }
 }
@@ -1855,21 +1855,21 @@ function viewLogin() {
   const email = h('input', { class: 'input', type: 'email', autocomplete: 'username', required: true, value: recall('lastEmail') || '' });
   const pw = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', required: true });
   const err = h('p', { class: 'err', role: 'alert' });
-  const btn = h('button', { class: 'btn primary', type: 'submit', style: 'width:100%' }, 'Sign in');
+  const btn = h('button', { class: 'btn primary', type: 'submit', style: 'width:100%' }, 'Log in');
   return h('form', { class: 'login', onsubmit: async e => {
       e.preventDefault(); err.textContent = ''; btn.disabled = true; btn.textContent = 'Signing in…';
       store('lastEmail', email.value.trim());
       const { error } = await sb.auth.signInWithPassword({ email: email.value.trim(), password: pw.value });
-      if (error) { err.textContent = /invalid/i.test(error.message) ? 'That email and password don’t match. Check them and try again.' : error.message; btn.disabled = false; btn.textContent = 'Sign in'; }
+      if (error) { err.textContent = /invalid/i.test(error.message) ? 'That email and password don’t match. Check them and try again.' : error.message; btn.disabled = false; btn.textContent = 'Log in'; }
     } },
-    h('h3', { class: 'login-title' }, 'Sign in to your budget'),
+    h('h3', { class: 'login-title' }, 'Log in to your budget'),
     h('label', { class: 'field' }, h('span', {}, 'Email'), email),
     h('label', { class: 'field' }, h('span', {}, 'Password'), pw),
     err, btn);
 }
 function showMessage(title, text) {
   $('#main').replaceChildren(h('div', { class: 'empty' }, h('h3', { class: 'login-title' }, title), h('p', {}, text),
-    sb ? h('button', { class: 'btn', onclick: () => sb.auth.signOut() }, 'Sign out') : null));
+    sb ? h('button', { class: 'btn', onclick: () => sb.auth.signOut() }, 'Log out') : null));
 }
 let started = false;
 async function startApp(session) {
@@ -1881,7 +1881,7 @@ async function startApp(session) {
   let members;
   try { members = await q(sb.from('members').select('email')); }
   catch (e) { showMessage('Couldn’t reach the database', 'Check your internet connection and reload the page. If the database was paused for inactivity, switch it back on in Supabase.'); return; }
-  if (!members.length) { showMessage('This login isn’t set up for the budget', `${S.uid} isn’t on the members list. Sign in with one of the two budget emails.`); return; }
+  if (!members.length) { showMessage('This login isn’t set up for the budget', `${S.uid} isn’t on the members list. Log in with one of the two budget emails.`); return; }
   S.ready = true;
   const d = db;
   d.doc('settings/main').onSnapshot(s => {
