@@ -1136,7 +1136,7 @@ function viewPots() {
 /* ---------- savings forecast ---------- */
 /* Forecast per pot from October 2026. A month that has ended uses its real figure; later months use the budget. */
 const SAV_START = '2026-10', SAV_END = '2027-12';
-const SAV_POTS = ['Travel savings', 'Investing – Maria', 'Investing – Jack', 'House savings'];
+const SAV_POTS = ['Travel savings', 'Investing – Maria', 'Investing – Jack', 'House savings', 'Loan'];
 function savMonths() { const out = []; for (let ym = SAV_START; ym <= SAV_END; ym = shiftYm(ym, 1)) out.push(ym); return out; }
 function savFigures(ym, tx) {
   const p = plan(ym), spent = spendingBy(tx || []), cur = currentYm(), done = ym < cur, sc = savCats();
@@ -1185,8 +1185,8 @@ function viewSavings() {
     if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(sum(doneList, name, 'a'))}`));
     return td;
   };
-  const table = (rowsDef, firstHead) => h('div', { class: 'scroll-x sv' }, h('table', { class: 'year', style: 'min-width:560px' },
-    h('thead', {}, h('tr', {}, h('th', {}, firstHead), SAV_POTS.map(n => h('th', {}, catLabel(n))), h('th', {}, 'All four'))),
+  const table = (rowsDef, firstHead) => h('div', { class: 'scroll-x sv' }, h('table', { class: 'year', style: 'min-width:680px' },
+    h('thead', {}, h('tr', {}, h('th', {}, firstHead), SAV_POTS.map(n => h('th', {}, catLabel(n))), h('th', {}, 'All'))),
     h('tbody', {}, rowsDef.map(r => h('tr', { class: r.total ? 'tot-row' : '' }, h('td', {}, r.label), SAV_POTS.map(n => cell(r.list, n)),
       (() => { const doneList = r.list.filter(m => m.done), all = SAV_POTS.reduce((a, n) => a + sum(r.list, n, 'f'), 0); const td = h('td', { class: 'num tot' }, h('div', { class: 'sv-f' }, money(all))); if (doneList.length) td.append(h('div', { class: 'sv-a' }, `Actual ${money(SAV_POTS.reduce((a, n) => a + sum(doneList, n, 'a'), 0))}`)); return td; })())))));
   wrap.append(h('h4', { class: 'sec' }, 'By quarter'),
