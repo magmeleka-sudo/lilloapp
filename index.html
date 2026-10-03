@@ -184,6 +184,12 @@ dialog::backdrop{background:rgba(10,20,16,.45)}
 .dlg{padding:22px 20px 20px;overflow:auto;max-height:calc(100vh - 60px)}
 .dlg h3{font-family:var(--display);font-weight:700;font-size:1.4rem;margin:0 0 16px}
 .dlg-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 16px}
+.opt{display:block;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:14px 12px;cursor:pointer;min-height:84px}
+.opt:hover{border-color:var(--ink)}
+.opt strong{display:block;margin-bottom:2px}
+.opt span{display:block;font-size:.85rem;color:var(--muted)}
+.opt input{display:none}
 .drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;cursor:pointer;margin-bottom:14px}
 .drop.on{border-color:var(--pine);background:var(--pine-soft)}
 .drop input{display:none}
@@ -228,7 +234,7 @@ dialog::backdrop{background:rgba(10,20,16,.45)}
 <div class="actions" id="actions" hidden>
   <div class="inner">
     <button class="btn primary" id="addBtn">Add expense</button>
-    <button class="btn" id="importBtn">Import statement</button>
+    <button class="btn" id="importBtn">Scan or import</button>
   </div>
 </div>
 
@@ -1152,13 +1158,23 @@ function openTx(t) {
 /* ---------- import ---------- */
 const IMP = { stage: 'pick', files: [], text: '', rows: [], error: '', progress: '', ctl: null };
 function openImport() {
-  Object.assign(IMP, { stage: 'pick', files: [], text: '', rows: [], error: '', progress: '', ctl: null });
+  Object.assign(IMP, { stage: 'pick', files: [], images: [], text: '', rows: [], error: '', progress: '', ctl: null, cancelled: false });
   renderImport(); $('#impDlg').showModal();
 }
 async function renderImport() {
   const body = $('#impBody'), dlg = $('#impDlg');
   if (IMP.stage === 'pick') {
     const fileIn = h('input', { type: 'file', multiple: true, accept: '.csv,.txt,.tsv,text/csv,text/plain' });
+    const pickImages = (mode, camera) => {
+      const inp = h('input', { type: 'file', accept: 'image/*', multiple: !camera, capture: camera ? 'environment' : null });
+      inp.onchange = () => { if (!inp.files.length) return; IMP.images = [...inp.files]; readImages(mode); };
+      return inp;
+    };
+    const opts = h('div', { class: 'opts' },
+      h('button', { class: 'opt', onclick: () => { dlg.close(); openTx(null); } }, h('strong', {}, 'Type one in'), h('span', {}, 'Add a single expense by hand')),
+      h('label', { class: 'opt' }, pickImages('receipt', true), h('strong', {}, 'Scan a receipt'), h('span', {}, 'Take or choose a photo of a receipt')),
+      h('label', { class: 'opt' }, pickImages('screenshot', false), h('strong', {}, 'Bank screenshot'), h('span', {}, 'A picture of your transactions')),
+      h('div', { class: 'opt', style: 'cursor:default;border-style:dashed' }, h('strong', {}, 'Bank file or text'), h('span', {}, 'A CSV file, or paste, below')));
     const drop = h('label', { class: 'drop' }, fileIn,
       h('strong', {}, 'Choose a CSV file from your bank'),
       h('div', { class: 'muted', style: 'font-size:.9rem' }, 'In online banking, download your transactions as CSV. Drop the file here or tap to choose.'));
@@ -1172,10 +1188,10 @@ async function renderImport() {
     showFiles();
     const ta = h('textarea', { class: 'input', placeholder: 'Or paste transactions copied from online banking, one per line', value: IMP.text, oninput: e => IMP.text = e.target.value });
     const go = h('button', { class: 'btn primary', onclick: () => readImport() }, 'Read transactions');
-    body.replaceChildren(h('h3', {}, 'Import a statement'), drop, fileList,
+    body.replaceChildren(h('h3', {}, 'Add expenses'), opts, drop, fileList,
       h('label', { class: 'field' }, h('span', {}, 'Paste instead'), ta),
-      IMP.error ? h('p', { class: 'err', role: 'alert' }, IMP.error) : null,
-      h('p', { class: 'muted', style: 'font-size:.88rem' }, 'Categories are filled in from merchants you’ve used before and common shops. You check everything before it’s saved, and your choices are remembered for next time.'),
+      IMP.error ? h('p', { class: 'err', role: 'alert' }, IMP.error) : '',
+      h('p', { class: 'muted', style: 'font-size:.88rem' }, 'Categories are filled in from merchants you’ve used before and common shops. Photos are read on your device and never uploaded. You check everything before it’s saved: change any detail, or remove a row.'),
       h('div', { class: 'dlg-actions' }, h('button', { class: 'btn', onclick: () => dlg.close() }, 'Cancel'), go));
   } else if (IMP.stage === 'reading') {
     body.replaceChildren(h('h3', {}, 'Reading your statement'), h('p', {}, h('span', { class: 'spinner' }), IMP.progress || 'Thinking…'),
@@ -1196,13 +1212,14 @@ async function renderImport() {
       const rowEl = h('div', { class: 'rrow' + (r.include ? '' : ' off') });
       box.onchange = () => { r.include = box.checked; rowEl.classList.toggle('off', !r.include); updSummary(); };
       const date = h('input', { class: 'input', type: 'date', value: r.date, 'aria-label': 'Date', onchange: e => { r.date = e.target.value; updSummary(); } });
-      const amt = h('div', { class: 'money-in' }, h('input', { class: 'input num', inputmode: 'decimal', value: r.amount.toFixed(2), 'aria-label': 'Amount', onchange: e => { const n = parseMoney(e.target.value); if (n > 0) r.amount = r2(n); updSummary(); } }));
+      const amt = h('div', { class: 'money-in' }, h('input', { class: 'input num', inputmode: 'decimal', value: r.amount > 0 ? r.amount.toFixed(2) : '', placeholder: '0.00', 'aria-label': 'Amount', onchange: e => { const n = parseMoney(e.target.value); if (n > 0) r.amount = r2(n); updSummary(); } }));
       const desc = h('input', { class: 'input', value: r.description, 'aria-label': 'Description', onchange: e => r.description = e.target.value });
       const cat = h('select', { class: 'input', 'aria-label': 'Category', onchange: e => r.category = e.target.value }, h('option', { value: '' }, 'Choose a category'), expCats(S.ym).map(c => h('option', { value: c }, catLabel(c))));
       cat.value = r.category;
       const tags = h('div', { class: 'span2' }, r.dup ? h('span', { class: 'tag dup' }, 'Looks already added') : null, r.incoming ? h('span', { class: 'tag in' }, 'Money in') : null);
       rowEl.append(box, date, amt, h('span'), h('div', { class: 'span2' }, desc), h('span'), h('div', { class: 'span2' }, cat));
       if (r.dup || r.incoming) rowEl.append(h('span'), tags);
+      rowEl.append(h('span'), h('div', { class: 'span2' }, h('button', { class: 'btn link', style: 'font-size:.88rem', disabled: IMP.stage === 'saving', onclick: () => { IMP.rows.splice(IMP.rows.indexOf(r), 1); renderImport(); } }, 'Remove this row')));
       list.append(rowEl);
     });
     updSummary();
@@ -1210,8 +1227,8 @@ async function renderImport() {
     const saving = IMP.stage === 'saving';
     const save = h('button', { class: 'btn primary', disabled: saving, onclick: saveImport }, saving ? (IMP.progress || 'Saving…') : 'Save selected');
     body.replaceChildren(h('h3', {}, 'Check before saving'),
-      rows.length ? h('p', { class: 'muted', style: 'font-size:.9rem;margin-top:-8px' }, 'Untick anything that shouldn’t count, like transfers between your own accounts. Money coming in is left unticked; tick it to count it as a refund.') : h('p', {}, 'No transactions were found. Try a clearer screenshot, or paste the text instead.'),
-      list, summary, err,
+      rows.length ? h('p', { class: 'muted', style: 'font-size:.9rem;margin-top:-8px' }, 'Untick anything that shouldn’t count, like transfers between your own accounts. Money coming in is left unticked; tick it to count it as a refund.') : h('p', {}, 'Nothing could be read from that. Try a clearer, closer picture, or add the rows yourself below.'),
+      list, h('button', { class: 'btn link', disabled: saving, onclick: () => { IMP.rows.push({ date: S.ym === currentYm() ? todayIso() : `${S.ym}-01`, description: '', amount: 0, incoming: false, category: '', include: true, dup: false }); renderImport(); } }, '+ Add another row'), summary, err,
       h('div', { class: 'dlg-actions' }, h('button', { class: 'btn', disabled: saving, onclick: () => { IMP.stage = 'pick'; IMP.error = ''; renderImport(); } }, 'Back'), rows.length ? save : null));
   }
 }
@@ -1249,7 +1266,7 @@ function splitCsvLine(line, delim) {
   }
   out.push(cur); return out.map(x => x.trim());
 }
-function parseStatement(text) {
+function parseStatement(text, defaultDate) {
   const lines = String(text).replace(/\r/g, '').split('\n').filter(l => l.trim());
   if (!lines.length) return [];
   const first = lines.slice(0, 5).join('\n');
@@ -1258,7 +1275,7 @@ function parseStatement(text) {
     const cols = splitCsvLine(lines[i], delim).map(x => x.toLowerCase());
     if (cols.some(x => /date/.test(x)) && cols.some(x => /amount|debit|credit|paid out|money out|paid in|money in|value|withdraw/.test(x))) return parseCsvRows(lines.slice(i + 1), cols, delim);
   }
-  return parseLoose(lines);
+  return parseLoose(lines, defaultDate);
 }
 function parseCsvRows(rows, cols, delim) {
   const find = re => cols.findIndex(c => re.test(c));
@@ -1286,13 +1303,14 @@ function parseCsvRows(rows, cols, delim) {
   }
   return recs;
 }
-function parseLoose(lines) {
-  const recs = []; let curDate = null;
+function parseLoose(lines, defaultDate) {
+  const recs = []; let curDate = defaultDate || null;
   const amtRe = /([+\-−]?\s?£\s?\d{1,3}(?:,\d{3})*\.\d{2}|[+\-−]?\s?\d{1,3}(?:,\d{3})*\.\d{2})(\s?(?:CR|DR)\b)?/gi;
   lines.forEach(line => {
     let rest = line;
-    const d = dateAtStart(line);
+    const d = dateAtStart(line), rel = line.match(/^\s*(today|yesterday)\b/i);
     if (d && d.iso) { curDate = d.iso; rest = line.slice(d.len); }
+    else if (rel) { const t = new Date(); if (/^y/i.test(rel[1])) t.setDate(t.getDate() - 1); curDate = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`; rest = line.slice(rel[0].length); }
     if (!curDate) return;
     const amts = [...rest.matchAll(amtRe)];
     if (!amts.length) return;
@@ -1324,8 +1342,8 @@ function guessCategory(desc) {
 }
 function normRow(r) {
   if (!r || typeof r !== 'object') return null;
-  const amt = Math.abs(Number(r.amount));
-  if (!(amt > 0)) return null;
+  const amt = Math.abs(Number(r.amount)) || 0;
+  if (!(amt > 0) && !r.blank) return null;
   let date = String(r.date || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = S.ym === currentYm() ? todayIso() : `${S.ym}-01`;
   const description = String(r.description || '').trim().slice(0, 120);
@@ -1345,6 +1363,10 @@ async function readImport() {
   const raw = [];
   texts.forEach(t => raw.push(...parseStatement(t)));
   if (!raw.length) { IMP.error = 'No transactions found. Check it’s the transactions export from your bank, with dates and amounts.'; renderImport(); return; }
+  await finishImport(raw);
+}
+/* Turns raw rows (from a file, text or a picture) into the review list. */
+async function finishImport(raw) {
   IMP.error = '';
   const seen = new Set(), rows = [];
   raw.map(normRow).filter(Boolean).forEach(r => { const k = `${r.date}|${r.amount.toFixed(2)}|${normKey(r.description)}|${r.incoming}`; if (!seen.has(k)) { seen.add(k); rows.push(r); } });
@@ -1353,13 +1375,85 @@ async function readImport() {
     const months = [...new Set(rows.map(r => r.date.slice(0, 7)))];
     const existing = new Set();
     for (const ym of months) (await fetchMonth(ym)).forEach(t => existing.add(`${t.date}|${Math.abs(Number(t.amount)).toFixed(2)}`));
-    rows.forEach(r => { if (existing.has(`${r.date}|${r.amount.toFixed(2)}`)) { r.dup = true; r.include = false; } });
+    rows.forEach(r => { if (r.amount > 0 && existing.has(`${r.date}|${r.amount.toFixed(2)}`)) { r.dup = true; r.include = false; } });
   } catch (e) {}
   IMP.rows = rows; IMP.stage = 'review'; renderImport();
+}
+
+/* ---------- reading pictures (receipts and bank screenshots), on this device ---------- */
+let ocrLoading = null;
+function loadOcr() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!ocrLoading) ocrLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js';
+    s.onload = res; s.onerror = () => { ocrLoading = null; rej(new Error('ocr-load')); };
+    document.head.append(s);
+  });
+  return ocrLoading;
+}
+/* Phone photos are huge; shrinking them keeps reading quick without hurting the text. */
+async function shrinkImage(file, max = 2000) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    if (k === 1) return file;
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    return await new Promise(r => cv.toBlob(b => r(b || file), 'image/png'));
+  } catch (e) { return file; }
+}
+async function ocrImages(files) {
+  await loadOcr();
+  const texts = [];
+  for (let i = 0; i < files.length; i++) {
+    if (IMP.cancelled) return texts;
+    const img = await shrinkImage(files[i]);
+    const r = await Tesseract.recognize(img, 'eng', { logger: m => {
+      if (m.status === 'recognizing text' && IMP.stage === 'reading' && !IMP.cancelled) { IMP.progress = `Reading picture ${i + 1} of ${files.length}… ${Math.round(m.progress * 100)}%`; renderImport(); }
+    } });
+    texts.push(r.data.text);
+  }
+  return texts;
+}
+const STORE_RE = /tesco|lidl|aldi|asda|sainsbury'?s?|waitrose|morrisons|co-?op|iceland|ocado|m&s|marks (?:&|and) spencer|boots|superdrug|primark|h&m|next|argos|b&q|screwfix|ikea|amazon|costa|starbucks|greggs|pret|mcdonald'?s|kfc|subway|nando'?s|wilko|the range|home bargains|b&m|poundland|decathlon|shell|bp|esso/i;
+function parseReceipt(text) {
+  const lines = String(text).replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+  const num = s => parseFloat(String(s).replace(/,(?=\d{3}\b)/g, '').replace(',', '.'));
+  const amtRe = /(\d{1,4}(?:,\d{3})*[.,]\d{2})(?!\d)/g;
+  let total = NaN;
+  lines.forEach(l => {
+    if (!/total|balance due|amount due|to pay|card (?:payment|tender)|visa|mastercard|debit/i.test(l) || /sub ?total|saving|points|change|vat|clubcard|reward/i.test(l)) return;
+    const m = [...l.matchAll(amtRe)]; if (m.length) { const v = num(m[m.length - 1][1]); if (v > 0 && !(v < total)) total = v; }
+  });
+  if (!(total > 0)) { lines.forEach(l => { [...l.matchAll(amtRe)].forEach(m => { const v = num(m[1]); if (v > 0 && !(v < total)) total = v; }); }); }
+  let date = null;
+  for (const l of lines) {
+    const m = l.match(/\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\.?,?\s+\d{2,4}/);
+    const d = m && parseDate(m[0]);
+    if (d && d <= todayIso()) { date = d; break; }
+  }
+  const known = text.match(STORE_RE);
+  let store = known ? known[0].toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : (lines.find(l => /[A-Za-z]{3,}/.test(l) && !/receipt|vat|tel|www|thank/i.test(l)) || '').replace(/[^A-Za-z0-9&' .-]/g, '').trim().slice(0, 40);
+  return [{ date: date || '', description: store, amount: total > 0 ? total : 0, incoming: false, blank: !(total > 0) }];
+}
+async function readImages(mode) {
+  IMP.stage = 'reading'; IMP.cancelled = false; IMP.error = ''; IMP.progress = 'Loading the picture reader…';
+  IMP.ctl = { abort() { IMP.cancelled = true; IMP.stage = 'pick'; renderImport(); } };
+  renderImport();
+  let texts;
+  try { texts = await ocrImages(IMP.images); }
+  catch (e) { if (IMP.cancelled) return; IMP.stage = 'pick'; IMP.error = 'Couldn’t read the picture. Check your internet connection and try again, or type it in instead.'; renderImport(); return; }
+  if (IMP.cancelled) return;
+  const raw = [], today = todayIso();
+  texts.forEach(t => raw.push(...(mode === 'receipt' ? parseReceipt(t) : parseStatement(t, today))));
+  await finishImport(raw);
 }
 async function saveImport() {
   const inc = IMP.rows.filter(r => r.include);
   if (!inc.length) { IMP.error = 'Tick at least one transaction to save.'; renderImport(); return; }
+  const noAmt = inc.filter(r => !(r.amount > 0)).length;
+  if (noAmt) { IMP.error = `Enter an amount for ${noAmt} ticked row${noAmt === 1 ? '' : 's'}, or remove ${noAmt === 1 ? 'it' : 'them'}.`; renderImport(); return; }
   const missing = inc.filter(r => !r.category).length;
   if (missing) { IMP.error = `Choose a category for ${missing} ticked transaction${missing === 1 ? '' : 's'}.`; renderImport(); return; }
   IMP.error = ''; IMP.stage = 'saving';
