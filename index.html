@@ -888,7 +888,7 @@ const POTS = [
   { name: 'Travel savings' }, { name: '10%' },
 ];
 /* In these months, Maria's savings are counted in Jack's savings pot instead of being split. */
-const POTS_SAVINGS_ALL_TO_JACK = ['2026-10'];
+const POTS_SAVINGS_ALL_TO_JACK = [];
 const normName = s => String(s || '').toLowerCase().replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim();
 const potLabel = p => catLabel(p.name);
 function potsMonths() { const out = []; for (let ym = POTS_START; ym <= currentYm(); ym = shiftYm(ym, 1)) out.push(ym); return out; }

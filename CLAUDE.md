@@ -37,5 +37,7 @@ A household budget web app shared by Maria and her husband Jack.
 - Follow the push rule above: ask before pushing anything that is not a safe display-only change.
 - Preview with real data: serve index.html on localhost and let Maria sign in herself in the Browser pane. Never enter her password. Anything saved there writes to her real database.
 - Display names: `CAT_LABELS` in index.html maps stored category names to display names (the "10%" category shows as "God’s Shares"). The stored name is unchanged.
-- October 2026 savings go entirely to "Savings – Jack" (`POTS_SAVINGS_ALL_TO_JACK`); other months split equally. The Insights > Pots tab keeps running totals from October 2026 (`POTS_START`).
+- Savings are split equally between Savings – Maria and Savings – Jack in every month. `POTS_SAVINGS_ALL_TO_JACK` in index.html is a list of months (e.g. `['2026-10']`) where all savings go to Jack instead; it is empty now (October 2026 was switched back to an equal split on request). The Insights > Pots tab keeps running totals from October 2026 (`POTS_START`).
+- Category merges (read-time only, stored data unchanged): Council tax counts under Bills; Clothes – Maria/Jack count under Pocket money – Maria/Jack (`CAT_MERGE`). Some categories are hidden from the add/scan/import pick lists (`PICK_HIDDEN`).
+- Add expenses screen (Scan or import): type one in, scan a receipt, bank screenshot, CSV/paste. Photos are read on the device with Tesseract.js; nothing is uploaded.
 - Keep explanations simple; avoid jargon, or explain it when used.
