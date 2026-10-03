@@ -295,7 +295,7 @@ function dayLabel(iso) { const [y, m, d] = iso.split('-').map(Number); return ne
 function parseMoney(v) { const n = parseFloat(String(v).replace(/[£,\s]/g, '')); return isFinite(n) ? n : NaN; }
 const normKey = s => String(s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim().split(' ').slice(0, 3).join(' ');
 /* Display names only. The stored category name never changes, so old expenses and budgets keep working. */
-const CAT_LABELS = { '10%': 'God’s Shares' };
+const CAT_LABELS = { '10%': 'God’s Shares', 'Grocery': 'Groceries', 'Transportation': 'Transport' };
 const catLabel = c => CAT_LABELS[c] || c;
 /* Merged categories: stored data is never rewritten. On load, each old category is counted under its new home, and budget amounts are added together. */
 const CAT_MERGE = { 'council tax': 'Bills', 'clothes - maria': 'Pocket money – Maria', 'clothes - jack': 'Pocket money – Jack', 'savings - maria': 'House savings', 'savings - jack': 'House savings' };

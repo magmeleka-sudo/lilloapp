@@ -35,7 +35,8 @@ A household budget web app shared by Maria and her husband Jack.
 ## Working agreements
 - Follow the push rule above: ask before pushing anything that is not a safe display-only change.
 - Preview with real data: serve index.html on localhost and let Maria sign in herself in the Browser pane. Never enter her password. Anything saved there writes to her real database.
-- Display names: `CAT_LABELS` in index.html maps stored category names to display names (the "10%" category shows as "God’s Shares"). The stored name is unchanged.
+- Display names: `CAT_LABELS` in index.html maps stored category names to display names (the "10%" category shows as "God’s Shares", Grocery as "Groceries", Transportation as "Transport"). The stored name is unchanged.
+- Language: Maria is in the UK, so all wording must be British English (spelling such as "recategorise", "colour", "tick", £ amounts, DD/MM dates).
 - Savings are one category, "House savings" (Savings – Maria and Savings – Jack were combined on request, so savings are no longer split). The Insights > Pots tab keeps running totals from October 2026 (`POTS_START`).
 - Category merges (read-time only, stored data unchanged, `CAT_MERGE`): Council tax counts under Bills; Clothes – Maria/Jack count under Pocket money – Maria/Jack; Savings – Maria/Jack count under House savings. Some categories are hidden from the add/scan/import pick lists (`PICK_HIDDEN`).
 - The app started in October 2026 (`APP_START`): months before that have zero budget and income (read-time rule in `budgetFor`). A month can still be given its own figures.
